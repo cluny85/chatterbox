@@ -892,6 +892,8 @@ def generate_batch_tts(
     sound_words_field: str = "",
     use_faster_whisper: bool = False,
     generate_separate_audio_files: bool = False,
+    output_dir: str = "output",
+    add_filename_suffix: bool = True,
 ) -> list[str]:
     print(f"[DEBUG] Received audio_prompt_path_input: {audio_prompt_path_input!r}")
 
@@ -971,11 +973,13 @@ def generate_batch_tts(
             normalize_audio, normalize_method, normalize_level, normalize_tp,
             normalize_lra, num_candidates_per_chunk, max_attempts_per_candidate,
             bypass_whisper_checking, whisper_model_name, enable_parallel,
-            num_parallel_workers, use_longest_transcript_on_fail, sound_words_field, use_faster_whisper
+            num_parallel_workers, use_longest_transcript_on_fail, sound_words_field, use_faster_whisper,
+            output_dir=output_dir,
+            add_filename_suffix=add_filename_suffix
         )
     else:
         # No text file: just process the Text Input box as one job
-        input_basename = "text_input_"
+        input_basename = "text_input"
         return process_text_for_tts(
             text, input_basename, audio_prompt_path_input,
             exaggeration_input, temperature_input, seed_num_input, cfgw_input,
@@ -986,7 +990,9 @@ def generate_batch_tts(
             normalize_audio, normalize_method, normalize_level, normalize_tp,
             normalize_lra, num_candidates_per_chunk, max_attempts_per_candidate,
             bypass_whisper_checking, whisper_model_name, enable_parallel,
-            num_parallel_workers, use_longest_transcript_on_fail, sound_words_field, use_faster_whisper
+            num_parallel_workers, use_longest_transcript_on_fail, sound_words_field, use_faster_whisper,
+            output_dir=output_dir,
+            add_filename_suffix=add_filename_suffix
         )
 
 def process_text_for_tts(
@@ -1025,6 +1031,8 @@ def process_text_for_tts(
     use_longest_transcript_on_fail,
     sound_words_field,
     use_faster_whisper=False,
+    output_dir="output",
+    add_filename_suffix=True,
 ):
 
     
@@ -1052,7 +1060,7 @@ def process_text_for_tts(
     print("[DEBUG] After reference number removal:", repr(text))  # <--- ADD THIS LINE HERE
 
     os.makedirs("temp", exist_ok=True)
-    os.makedirs("output", exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     for f in os.listdir("temp"):
         os.remove(os.path.join("temp", f))
 
@@ -1284,9 +1292,16 @@ def process_text_for_tts(
             continue
 
         full_audio = torch.cat(waveform_list, dim=1)
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S_%f")[:-3]
-        filename_suffix = f"{timestamp}_gen{gen_index+1}_seed{this_seed}"
-        wav_output = f"output/{input_basename}audio_{filename_suffix}.wav"
+
+        if add_filename_suffix:
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S_%f")[:-3]
+            filename_suffix = f"audio_{timestamp}_gen{gen_index+1}_seed{this_seed}"
+            final_basename = f"{input_basename}_{filename_suffix}"
+        else:
+            final_basename = input_basename
+
+        wav_output = os.path.join(output_dir, f"{final_basename}.wav")
+
         torchaudio.save(wav_output, full_audio, model.sr)
         print(f"\33[104m[DEBUG] \33[5mFinal audio concatenated, output file: {wav_output}\033[0m")
 
@@ -1406,11 +1421,12 @@ def process_text_for_tts(
             "input_basename": input_basename,  # Additional info, optional
             "audio_prompt_path_input": audio_prompt_path_input,  # Additional info, optional
             "generation_time": datetime.datetime.now().isoformat(),
+            "add_filename_suffix": add_filename_suffix,
             #"output_audio_files": gen_outputs,  # Add this so each settings.json also points to its outputs!
         }
 
         # Name settings file after the first output audio file (base)
-        base_out = gen_outputs[0].rsplit('.', 1)[0]  # E.g., output/audiofile_gen1_seedXXXXX
+        base_out = wav_output.rsplit('.', 1)[0]
         csv_path = base_out + ".settings.csv"
         json_path = base_out + ".settings.json"
 
@@ -1769,12 +1785,13 @@ def main():
             with gr.Tab("Voice Conversion (VC)"):
                 gr.Markdown("## Voice Conversion\nConvert one speaker's voice to sound like another speaker using a target/reference voice audio.")
                 with gr.Row():
-                    vc_input_audio = gr.Audio(sources=["upload", "microphone"], type="filepath", label="Input Audio (to convert)")
-                    vc_target_audio = gr.Audio(sources=["upload", "microphone"], type="filepath", label="Target Voice Audio")
-                vc_pitch_shift = gr.Number(value=0, label="Pitch", step=0.5, interactive=True)
-                vc_convert_btn = gr.Button("Run Voice Conversion")
-                vc_output_files = gr.Files(label="Converted VC Audio File(s)")
-                vc_output_audio = gr.Audio(label="VC Output Preview", interactive=True)
+                    with gr.Column():
+                        vc_input_audio = gr.Audio(sources=["upload", "microphone"], type="filepath", label="Input Audio (to convert)")
+                        vc_target_audio = gr.Audio(sources=["upload", "microphone"], type="filepath", label="Target Voice Audio")
+                    vc_pitch_shift = gr.Number(value=0, label="Pitch", step=0.5, interactive=True)
+                    vc_convert_btn = gr.Button("Run Voice Conversion")
+                    vc_output_files = gr.Files(label="Converted VC Audio File(s)")
+                    vc_output_audio = gr.Audio(label="VC Output Preview", interactive=True)
 
                 def _vc_wrapper(input_audio_path, target_voice_audio_path, disable_watermark, pitch_shift):
                     # Defensive: None means Gradio didn't get file yet

@@ -5,3 +5,7 @@ __pycache__
 
 # VS Code
 *.code-workspace
+
+output-n8n/*
+generated_audio/*
+temp/*
