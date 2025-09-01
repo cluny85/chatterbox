@@ -95,7 +95,7 @@ def main():
         f"PrimaryColour={ass_primary_color}",
         f"OutlineColour={ass_outline_color}",
         f"Alignment={alignment_value}",
-        "Outline=2"
+        "Outline=1"
     ]
     if args.font_size is not None:
         style_components.append(f"FontSize={args.font_size}")
